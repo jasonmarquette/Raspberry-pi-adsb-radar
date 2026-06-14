@@ -2,7 +2,7 @@
 
 import math
 import time
-import subprocess
+import os
 import requests
 from PIL import Image, ImageDraw, ImageFont
 
@@ -18,8 +18,8 @@ from PIL import Image, ImageDraw, ImageFont
 # -----------------------------
 
 # Your selected radar center.
-CENTER_LAT = 29.99835554802526
-CENTER_LON = -95.34047485551015
+CENTER_LAT = 30.14705507846894
+CENTER_LON = -95.39204791784302
 
 # Radar/API range in miles.
 # Smaller range = fewer aircraft.
@@ -450,32 +450,36 @@ def draw_radar(aircraft):
 # DISPLAY OUTPUT
 # -----------------------------
 
+def image_to_rgb565_bytes(img):
+    """
+    Convert a Pillow RGB image to RGB565 little-endian bytes.
+
+    Most small SPI framebuffer displays on Raspberry Pi use RGB565.
+    """
+    img = img.convert("RGB")
+
+    output = bytearray()
+
+    for r, g, b in img.getdata():
+        value = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+
+        # Little-endian RGB565
+        output.append(value & 0xFF)
+        output.append((value >> 8) & 0xFF)
+
+    return bytes(output)
+
+
 def show_on_display(img):
     """
-    Save the radar image and show it on the framebuffer using fbi.
+    Write the radar image directly to the Linux framebuffer.
 
-    timeout keeps fbi from taking over the terminal forever.
+    This avoids the flicker caused by repeatedly launching fbi.
     """
-    img.save(IMAGE_PATH)
+    frame = image_to_rgb565_bytes(img)
 
-    subprocess.run(
-        [
-            "sudo",
-            "timeout",
-            "4",
-            "fbi",
-            "-T",
-            "1",
-            "-d",
-            FRAMEBUFFER,
-            "-noverbose",
-            "-a",
-            IMAGE_PATH,
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
+    with open(FRAMEBUFFER, "wb", buffering=0) as fb:
+        fb.write(frame)
 
 # -----------------------------
 # MAIN LOOP
