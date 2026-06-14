@@ -1,3 +1,4 @@
+
 # Plane Radar Pi
 
 A Raspberry Pi 4B proof-of-concept port of an ESP32 live ADS-B plane radar project.
@@ -63,7 +64,7 @@ The current setup was built and tested on:
 Important: power off the Raspberry Pi before wiring the display.
 
 Even if the display module says 3V–5V compatible, use 3.3V with the Raspberry Pi first. Raspberry Pi GPIO pins are not 5V tolerant.
-
+<img width="2064" height="1185" alt="GPIO" src="https://github.com/user-attachments/assets/22c14240-d6d4-4c58-a48c-991a6f620fbb" />
 ---
 
 ## Enable SPI and GC9A01 Overlay
