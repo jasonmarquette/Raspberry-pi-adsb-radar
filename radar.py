@@ -190,13 +190,10 @@ def fetch_aircraft():
 
 def format_altitude(ac):
     """
-    Format altitude for tiny display.
+    Format altitude in feet.
 
-    Examples:
-    800 ft    -> 0.8k
-    3000 ft   -> 3k
-    13675 ft  -> 13.7k
-    36000 ft  -> 36k
+    Example:
+    2500 ft -> 2500 ft
     """
     alt = ac.get("alt_baro")
 
@@ -207,15 +204,9 @@ def format_altitude(ac):
         return "GND"
 
     if isinstance(alt, int) or isinstance(alt, float):
-        alt_k = alt / 1000
-
-        if alt_k < 10:
-            return f"{alt_k:.1f}k"
-        else:
-            return f"{alt_k:.0f}k"
+        return f"{int(round(alt))} ft"
 
     return ""
-
 
 def get_callsign(ac):
     callsign = (
