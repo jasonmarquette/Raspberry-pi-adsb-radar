@@ -529,6 +529,12 @@ Possible next steps:
 
 ---
 
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE) for details.
+
+---
+
 ## Credits
 
 Inspired by the ESP32 Plane Radar concept originally designed for an ESP32-C3 and GC9A01 round display.
