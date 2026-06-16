@@ -1,6 +1,6 @@
 # Plane Radar Pi
 
-A Raspberry Pi 4B proof-of-concept port of an ESP32 live ADS-B plane radar project. This version uses a 1.28 inch round GC9A01 240×240 SPI TFT display connected to a Raspberry Pi and shows nearby aircraft on a circular radar-style screen.
+A Raspberry Pi 4B proof-of-concept port of an ESP32 live ADS-B plane radar project. This version uses a 1.28 inch round GC9A01 240×240 SPI TFT in addition to HDMI display connected to a Raspberry Pi and shows nearby aircraft on a circular radar-style screen.
 
 The display is driven through the Raspberry Pi Linux framebuffer using the built-in GC9A01 device tree overlay. Aircraft data is fetched from the public ADS-B API at opendata.adsb.fi.
 
