@@ -134,8 +134,9 @@ IMAGE_PATH = "/tmp/plane-radar.png"
 
 WIDTH = 240
 HEIGHT = 240
+DRAW_SCALE = 1.0
 
-# Move radar slightly up to avoid bottom clipping.
+# Move radar slightly up to avoid bottom clipping on the round SPI display.
 CENTER_X = WIDTH // 2
 CENTER_Y = (HEIGHT // 2) - 4
 
@@ -181,11 +182,46 @@ def load_font(size, bold=False):
     return ImageFont.load_default()
 
 
-# Reverted to larger/readable font sizes.
+# Font objects are initialized by configure_layout().
 FONT_TINY = load_font(10)
 FONT_SMALL = load_font(10)
 FONT_MED = load_font(12)
 FONT_BOLD = load_font(12, bold=True)
+
+
+def scaled(value, minimum=1):
+    return max(minimum, int(round(value * DRAW_SCALE)))
+
+
+def configure_layout(width=240, height=240, mode="framebuffer"):
+    """
+    Configure drawing size.
+
+    Framebuffer mode renders the original 240x240 image for the GC9A01.
+    HDMI mode renders at the HDMI window/screen size instead of drawing 240x240
+    and scaling it up. This removes the pixelated look.
+    """
+    global WIDTH, HEIGHT, DRAW_SCALE, CENTER_X, CENTER_Y, RADAR_RADIUS
+    global FONT_TINY, FONT_SMALL, FONT_MED, FONT_BOLD
+
+    WIDTH = int(width)
+    HEIGHT = int(height)
+    DRAW_SCALE = min(WIDTH, HEIGHT) / 240.0
+
+    CENTER_X = WIDTH // 2
+
+    if mode == "framebuffer":
+        CENTER_Y = (HEIGHT // 2) - scaled(4, 0)
+        RADAR_RADIUS = min(WIDTH, HEIGHT) // 2 - scaled(8)
+    else:
+        CENTER_Y = HEIGHT // 2
+        RADAR_RADIUS = min(WIDTH, HEIGHT) // 2 - scaled(36)
+
+    # Scale fonts for HDMI so text is sharp instead of enlarged from 240px.
+    FONT_TINY = load_font(scaled(10, 8))
+    FONT_SMALL = load_font(scaled(10, 8))
+    FONT_MED = load_font(scaled(12, 9))
+    FONT_BOLD = load_font(scaled(12, 9), bold=True)
 
 
 # -----------------------------
@@ -386,16 +422,19 @@ def draw_heading_line(draw, x, y, heading_deg):
     dx = math.sin(radians)
     dy = -math.cos(radians)
 
-    start_x = x + dx * HEADING_LINE_GAP
-    start_y = y + dy * HEADING_LINE_GAP
+    gap = scaled(HEADING_LINE_GAP)
+    length = scaled(HEADING_LINE_LENGTH)
 
-    end_x = x + dx * HEADING_LINE_LENGTH
-    end_y = y + dy * HEADING_LINE_LENGTH
+    start_x = x + dx * gap
+    start_y = y + dy * gap
+
+    end_x = x + dx * length
+    end_y = y + dy * length
 
     draw.line(
         [(start_x, start_y), (end_x, end_y)],
         fill=COLOR_HEADING_LINE,
-        width=HEADING_LINE_WIDTH,
+        width=scaled(HEADING_LINE_WIDTH),
     )
 
 
@@ -403,21 +442,23 @@ def draw_aircraft_symbol(draw, x, y, track):
     """
     Draw a small aircraft triangle. If no track is available, draw a dot.
     """
+    dot_radius = scaled(3)
+
     if track is None:
-        draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=COLOR_AIRCRAFT)
+        draw.ellipse((x - dot_radius, y - dot_radius, x + dot_radius, y + dot_radius), fill=COLOR_AIRCRAFT)
         return
 
     try:
         track = float(track)
     except (TypeError, ValueError):
-        draw.ellipse((x - 3, y - 3, x + 3, y + 3), fill=COLOR_AIRCRAFT)
+        draw.ellipse((x - dot_radius, y - dot_radius, x + dot_radius, y + dot_radius), fill=COLOR_AIRCRAFT)
         return
 
     # Draw the heading line first so the aircraft triangle appears on top of it.
     draw_heading_line(draw, x, y, track)
 
     heading = math.radians(track)
-    size = 7
+    size = scaled(7)
 
     nose = (
         int(x + math.sin(heading) * size),
@@ -462,8 +503,8 @@ def draw_aircraft_label(draw, x, y, callsign, aircraft_type, altitude, label_ind
     if not lines:
         return
 
-    line_gap = 1
-    line_height = 11
+    line_gap = scaled(1)
+    line_height = scaled(11)
 
     text_width = 0
 
@@ -474,23 +515,23 @@ def draw_aircraft_label(draw, x, y, callsign, aircraft_type, altitude, label_ind
     text_height = len(lines) * line_height + (len(lines) - 1) * line_gap
 
     # Default: place label to right of aircraft.
-    tx = x + 7
-    ty = y - 10
+    tx = x + scaled(7)
+    ty = y - scaled(10)
 
     # If near right edge, place label to left.
-    if tx + text_width > WIDTH - 4:
-        tx = x - text_width - 7
+    if tx + text_width > WIDTH - scaled(4):
+        tx = x - text_width - scaled(7)
 
     # Keep inside top/bottom safe area.
-    if ty < 4:
-        ty = y + 7
+    if ty < scaled(4):
+        ty = y + scaled(7)
 
-    if ty + text_height > HEIGHT - 6:
-        ty = HEIGHT - 6 - text_height
+    if ty + text_height > HEIGHT - scaled(6):
+        ty = HEIGHT - scaled(6) - text_height
 
     # Slight alternating offset to reduce overlap.
     if label_index % 2 == 1:
-        ty += 5
+        ty += scaled(5)
 
     for i, (line_text, line_color) in enumerate(lines):
         draw.text(
@@ -518,7 +559,7 @@ def draw_radar(aircraft):
             CENTER_Y + RADAR_RADIUS,
         ),
         outline=COLOR_RING_MAJOR,
-        width=2,
+        width=scaled(2),
     )
 
     # Range rings.
@@ -531,7 +572,7 @@ def draw_radar(aircraft):
         draw.ellipse(
             (CENTER_X - rr, CENTER_Y - rr, CENTER_X + rr, CENTER_Y + rr),
             outline=COLOR_RING_MINOR,
-            width=1,
+            width=scaled(1),
         )
 
        
@@ -546,14 +587,14 @@ def draw_radar(aircraft):
     )
 
     # Cardinal direction labels.
-    draw_centered_text(draw, "N", CENTER_X, 4, FONT_BOLD, COLOR_TEXT)
-    draw_centered_text(draw, "S", CENTER_X, HEIGHT - 29, FONT_MED, COLOR_TEXT)
-    draw.text((WIDTH - 18, CENTER_Y - 7), "E", fill=COLOR_TEXT, font=FONT_MED)
-    draw.text((7, CENTER_Y - 7), "W", fill=COLOR_TEXT, font=FONT_MED)
+    draw_centered_text(draw, "N", CENTER_X, scaled(4), FONT_BOLD, COLOR_TEXT)
+    draw_centered_text(draw, "S", CENTER_X, HEIGHT - scaled(29), FONT_MED, COLOR_TEXT)
+    draw.text((WIDTH - scaled(18), CENTER_Y - scaled(7)), "E", fill=COLOR_TEXT, font=FONT_MED)
+    draw.text((scaled(7), CENTER_Y - scaled(7)), "W", fill=COLOR_TEXT, font=FONT_MED)
 
     # Radar range label.
     draw.text(
-        (8, HEIGHT - 17),
+        (scaled(8), HEIGHT - scaled(17)),
         f"Range: {RANGE_MI:g} mi",
         fill=COLOR_TEXT_DIM,
         font=FONT_SMALL,
@@ -561,7 +602,7 @@ def draw_radar(aircraft):
     
     # Own location / center dot.
     draw.ellipse(
-        (CENTER_X - 3, CENTER_Y - 3, CENTER_X + 3, CENTER_Y + 3),
+        (CENTER_X - scaled(3), CENTER_Y - scaled(3), CENTER_X + scaled(3), CENTER_Y + scaled(3)),
         fill=COLOR_OWN_SHIP,
     )
 
@@ -641,7 +682,8 @@ def init_hdmi_display():
 def show_on_hdmi(img, hdmi):
     """
     Show the Pillow radar image on the HDMI desktop.
-    The 240x240 radar is scaled up to the largest square that fits.
+    Show the radar at native HDMI resolution.
+    If the image already matches the target square, no scaling is done.
     """
     if DISPLAY_MODE != "hdmi" or hdmi is None:
         return False
@@ -658,7 +700,8 @@ def show_on_hdmi(img, hdmi):
     scale_size = min(screen_width, screen_height)
 
     surface = pygame.image.fromstring(img.convert("RGB").tobytes(), img.size, "RGB")
-    surface = pygame.transform.smoothscale(surface, (scale_size, scale_size))
+    if img.size != (scale_size, scale_size):
+        surface = pygame.transform.smoothscale(surface, (scale_size, scale_size))
 
     screen.fill(COLOR_BG)
     x = (screen_width - scale_size) // 2
@@ -741,6 +784,16 @@ def main():
     print("Press Ctrl+C to stop. Press Esc or q to quit HDMI mode.")
 
     hdmi = init_hdmi_display()
+
+    if DISPLAY_MODE == "hdmi" and hdmi is not None:
+        _, screen = hdmi
+        screen_width, screen_height = screen.get_size()
+        radar_size = min(screen_width, screen_height)
+        configure_layout(radar_size, radar_size, mode="hdmi")
+        print(f"HDMI screen: {screen_width}x{screen_height}")
+        print(f"HDMI radar render size: {WIDTH}x{HEIGHT}")
+    else:
+        configure_layout(240, 240, mode="framebuffer")
 
     while True:
         aircraft = fetch_aircraft()
