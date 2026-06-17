@@ -291,6 +291,13 @@ def fetch_aircraft():
     Fetch aircraft near the configured location.
 
     opendata.adsb.fi returns aircraft in the top-level "ac" array.
+
+    Returns:
+        list[dict] on success.
+        None on temporary failure, such as HTTP 429 rate limiting.
+
+    Returning None lets the main loop keep showing the last good
+    aircraft list instead of blanking the radar screen.
     """
     url = (
         f"https://opendata.adsb.fi/api/v3/lat/{CENTER_LAT}/"
@@ -299,6 +306,23 @@ def fetch_aircraft():
 
     try:
         response = requests.get(url, timeout=8)
+
+        if response.status_code == 429:
+            retry_after = response.headers.get("Retry-After")
+
+            if retry_after:
+                print(
+                    "ADS-B fetch rate limited: 429 Too Many Requests "
+                    f"| Retry-After: {retry_after}s | keeping last good data"
+                )
+            else:
+                print(
+                    "ADS-B fetch rate limited: 429 Too Many Requests "
+                    "| keeping last good data"
+                )
+
+            return None
+
         response.raise_for_status()
         data = response.json()
 
@@ -312,8 +336,8 @@ def fetch_aircraft():
         return aircraft
 
     except Exception as e:
-        print(f"ADS-B fetch failed: {e}")
-        return []
+        print(f"ADS-B fetch failed: {e} | keeping last good data")
+        return None
 
 
 # -----------------------------
@@ -795,15 +819,35 @@ def main():
     else:
         configure_layout(240, 240, mode="framebuffer")
 
+    last_good_aircraft = []
+    last_good_fetch_time = None
+
     while True:
-        aircraft = fetch_aircraft()
+        fetched_aircraft = fetch_aircraft()
+
+        if fetched_aircraft is not None:
+            last_good_aircraft = fetched_aircraft
+            last_good_fetch_time = time.time()
+            aircraft = fetched_aircraft
+            using_cached_data = False
+        else:
+            aircraft = last_good_aircraft
+            using_cached_data = True
+
         img, plotted = draw_radar(aircraft)
 
         save_preview_image(img)
         show_on_hdmi(img, hdmi)
         show_on_display(img)
 
-        print(f"Plotted targets: {plotted}")
+        if using_cached_data:
+            if last_good_fetch_time is None:
+                print(f"Plotted targets: {plotted} using cached data: no successful fetch yet")
+            else:
+                cache_age = int(time.time() - last_good_fetch_time)
+                print(f"Plotted targets: {plotted} using cached data: {cache_age}s old")
+        else:
+            print(f"Plotted targets: {plotted}")
 
         time.sleep(REFRESH_SECONDS)
 
