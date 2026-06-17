@@ -483,18 +483,3 @@ cd ~/plane-radar-pi
 If rate-limited, wait a few minutes and try again.
 
 ---
-
-## Git Commit Example
-
-After updating the service documentation and removing the unused startup script if applicable:
-
-```bash
-cd ~/plane-radar-pi
-git status
-git add README.md
-git add -u
-git commit -m "Document HDMI autostart service setup"
-git push
-```
-
-If `start-radar.sh` was removed, `git add -u` will stage that deletion.
