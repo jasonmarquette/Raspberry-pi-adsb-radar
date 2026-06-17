@@ -34,14 +34,34 @@ The current `radar.py` is optimized for HDMI and includes:
 
 ## Requirements
 
-Install the required packages:
+The script expects to be run on a Raspberry Pi with an HDMI display connected and the Raspberry Pi desktop/graphical environment available.
+
+System packages:
 
 ```bash
 sudo apt update
-sudo apt install python3-pygame python3-pil python3-requests
+sudo apt install python3-venv python3-pip python3-pil python3-requests
 ```
 
-The script expects to be run on a Raspberry Pi with an HDMI display connected.
+This project uses a Python virtual environment at:
+
+```text
+/home/jason/plane-radar-pi/.venv
+```
+
+Install `pygame` into the virtual environment used by the systemd service:
+
+```bash
+cd ~/plane-radar-pi
+source .venv/bin/activate
+python -m pip install pygame
+```
+
+You can verify that the service Python can import `pygame` with:
+
+```bash
+/home/jason/plane-radar-pi/.venv/bin/python -c "import pygame; print(pygame.version.ver)"
+```
 
 ---
 
@@ -113,18 +133,19 @@ The public API may rate-limit by public IP address, so multiple devices in the s
 
 ## Running Manually
 
-From the project directory:
+From the project directory, use the same virtual environment Python that the systemd service uses:
 
 ```bash
 cd ~/plane-radar-pi
-./radar.py --display hdmi
+/home/jason/plane-radar-pi/.venv/bin/python /home/jason/plane-radar-pi/radar.py --display hdmi
 ```
 
-or:
+Or, if the virtual environment is activated:
 
 ```bash
 cd ~/plane-radar-pi
-python3 radar.py --display hdmi
+source .venv/bin/activate
+python radar.py --display hdmi
 ```
 
 The HDMI mode automatically sets `DISPLAY=:0` if needed, so this should work without manually typing:
@@ -269,6 +290,8 @@ sudo systemctl stop plane-radar
 
 ## systemd Autostart Service
 
+The current setup does **not** use `start-radar.sh`. The service runs `radar.py` directly using the Python interpreter inside the project virtual environment.
+
 Create or edit the service file:
 
 ```bash
@@ -280,7 +303,7 @@ Recommended HDMI service:
 ```ini
 [Unit]
 Description=Plane Radar Pi HDMI
-After=network-online.target graphical.target
+After=graphical.target network-online.target
 Wants=network-online.target
 
 [Service]
@@ -289,13 +312,13 @@ User=jason
 WorkingDirectory=/home/jason/plane-radar-pi
 Environment=DISPLAY=:0
 Environment=XAUTHORITY=/home/jason/.Xauthority
-ExecStartPre=/bin/sleep 15
-ExecStart=/usr/bin/python3 /home/jason/plane-radar-pi/radar.py --display hdmi
+ExecStartPre=/bin/sleep 20
+ExecStart=/home/jason/plane-radar-pi/.venv/bin/python /home/jason/plane-radar-pi/radar.py --display hdmi
 Restart=always
 RestartSec=10
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical.target
 ```
 
 Reload systemd:
@@ -304,11 +327,21 @@ Reload systemd:
 sudo systemctl daemon-reload
 ```
 
-Enable autostart:
+Enable autostart under the graphical boot target:
 
 ```bash
+sudo systemctl disable plane-radar
 sudo systemctl enable plane-radar
 ```
+
+Verify that the service is linked under `graphical.target.wants`:
+
+```bash
+ls -l /etc/systemd/system/graphical.target.wants/plane-radar.service
+ls -l /etc/systemd/system/multi-user.target.wants/plane-radar.service
+```
+
+The correct result is that `graphical.target.wants` contains the service symlink and `multi-user.target.wants` does not.
 
 Start it now:
 
@@ -334,12 +367,15 @@ After reboot, the radar should start automatically on the HDMI screen.
 
 ## Troubleshooting Autostart
 
-If the service is enabled but does not start after reboot:
+If the service is enabled but does not start after reboot, check whether systemd tried to start it during the current boot:
 
 ```bash
 sudo systemctl status plane-radar
-journalctl -u plane-radar -n 100 --no-pager
+journalctl -u plane-radar -b -n 100 --no-pager
+systemctl is-enabled plane-radar
 ```
+
+If `journalctl` shows no entries for the current boot, the service probably is not linked to the boot target that the Pi is actually reaching.
 
 Check the default boot target:
 
@@ -347,26 +383,68 @@ Check the default boot target:
 systemctl get-default
 ```
 
-If the Pi boots to `multi-user.target`, the service should use:
+For this HDMI desktop setup, the Pi should normally boot to:
+
+```text
+graphical.target
+```
+
+Check where the service is enabled:
+
+```bash
+ls -l /etc/systemd/system/graphical.target.wants/plane-radar.service
+ls -l /etc/systemd/system/multi-user.target.wants/plane-radar.service
+```
+
+The working setup uses:
 
 ```ini
 [Install]
-WantedBy=multi-user.target
+WantedBy=graphical.target
 ```
 
-Then re-enable it:
+If the service is still linked under `multi-user.target.wants`, clean it up and re-enable it:
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl disable plane-radar
+sudo rm -f /etc/systemd/system/multi-user.target.wants/plane-radar.service
+sudo rm -f /etc/systemd/system/graphical.target.wants/plane-radar.service
 sudo systemctl enable plane-radar
-sudo reboot
+```
+
+Then verify:
+
+```bash
+ls -l /etc/systemd/system/graphical.target.wants/plane-radar.service
+ls -l /etc/systemd/system/multi-user.target.wants/plane-radar.service
 ```
 
 If the service starts too early before HDMI/desktop is ready, keep this delay in the service:
 
 ```ini
-ExecStartPre=/bin/sleep 15
+ExecStartPre=/bin/sleep 20
+```
+
+If the logs show this error:
+
+```text
+pygame is required. Install it with: sudo apt install python3-pygame
+```
+
+install `pygame` into the virtual environment used by the service:
+
+```bash
+cd ~/plane-radar-pi
+source .venv/bin/activate
+python -m pip install pygame
+```
+
+Then restart the service:
+
+```bash
+sudo systemctl restart plane-radar
+sudo systemctl status plane-radar
 ```
 
 ---
@@ -399,7 +477,7 @@ Then run only one copy:
 
 ```bash
 cd ~/plane-radar-pi
-./radar.py --display hdmi
+/home/jason/plane-radar-pi/.venv/bin/python /home/jason/plane-radar-pi/radar.py --display hdmi
 ```
 
 If rate-limited, wait a few minutes and try again.
@@ -408,12 +486,15 @@ If rate-limited, wait a few minutes and try again.
 
 ## Git Commit Example
 
-After updating `radar.py`, `config.ini`, and `README.md`:
+After updating the service documentation and removing the unused startup script if applicable:
 
 ```bash
 cd ~/plane-radar-pi
 git status
-git add radar.py config.ini README.md
-git commit -m "Optimize radar display for HDMI output"
+git add README.md
+git add -u
+git commit -m "Document HDMI autostart service setup"
 git push
 ```
+
+If `start-radar.sh` was removed, `git add -u` will stage that deletion.
